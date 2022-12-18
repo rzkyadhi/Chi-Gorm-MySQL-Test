@@ -3,6 +3,7 @@ package models
 import (
 	"errors"
 	"html"
+	"log"
 	"strings"
 	"time"
 
@@ -93,7 +94,8 @@ func (u *User) Validate(action string) error {
 	}
 }
 
-func (u *User) SaveUser(db *gorm.DB) (*User, error) {
+func SaveUser(db *gorm.DB) (*User, error) {
+	var u *User
 	err := db.Debug().Create(&u).Error
 	if err != nil {
 		return &User{}, err
@@ -101,11 +103,62 @@ func (u *User) SaveUser(db *gorm.DB) (*User, error) {
 	return u, nil
 }
 
-func (u *User) FindAllUser(db *gorm.DB) (*[]User, error) {
+func (*User) FindAllUser(db *gorm.DB) (*[]User, error) {
+	// users is array of User Struct
 	users := []User{}
-	err := db.Debug().Model(&User{}).Limit(100).Find(&users).Error
+	// Model(&User{}) -> &User{} is for returning memory address for Model function and Model deference the User{}
+	// Find(&users) -> &users is returning memory address for Find Function and Find deference the users
+	err := db.Debug().Model(&User{}).Find(&users).Limit(100).Error
 	if err != nil {
+		//
 		return &[]User{}, err
 	}
 	return &users, err
+}
+
+func (u *User) FindUserById(db *gorm.DB, uid uint32) (*User, error) {
+	err := db.Debug().Model(&User{}).Where("ID = ?", uid).Take(&u).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return &User{}, errors.New("User Not Found")
+		}
+		return &User{}, err
+	}
+	return u, err
+}
+
+func (u *User) UpdateUser(db *gorm.DB, uid uint32) (*User, error) {
+	err := u.BeforeSave()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	db = db.Debug().Model(&User{}).Where("ID = ?", uid).Take(&User{}).UpdateColumns(
+		map[string]interface{}{
+			"nickname":   u.Nickname,
+			"email":      u.Email,
+			"password":   u.Password,
+			"updated_at": time.Now(),
+		},
+	)
+
+	if db.Error != nil {
+		return &User{}, db.Error
+	}
+
+	//Displaying the updated user
+	err = db.Debug().Model(&User{}).Where("ID = ?", uid).Take(&u).Error
+	if err != nil {
+		return &User{}, err
+	}
+	return u, nil
+}
+
+func (u *User) DeleteUser(db *gorm.DB, uid uint32) (int64, error) {
+	db = db.Debug().Model(&User{}).Where("ID = ?", uid).Take(&User{}).Delete(&User{})
+
+	if db.Error != nil {
+		return 0, db.Error
+	}
+	return db.RowsAffected, nil
 }
